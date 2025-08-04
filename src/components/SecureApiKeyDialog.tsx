@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
 import { Shield, Eye, EyeOff, Key, AlertTriangle } from 'lucide-react';
 import { SecureStorage, InputValidator, SecurityLogger } from '@/utils/security';
+import Groq from 'groq-sdk';
 
 interface SecureApiKeyDialogProps {
   onApiKeyConfigured: (apiKey: string) => void;
@@ -25,21 +26,19 @@ export const SecureApiKeyDialog: React.FC<SecureApiKeyDialogProps> = ({
   const [error, setError] = useState('');
   const [useEncryption, setUseEncryption] = useState(SecureStorage.hasStoredApiKey());
   const [isUnlocking, setIsUnlocking] = useState(SecureStorage.hasStoredApiKey());
-  
+
   const { toast } = useToast();
 
-  const validateApiKeyWithOpenAI = async (key: string): Promise<boolean> => {
+  const validateApiKeyWithGroq = async (key: string): Promise<boolean> => {
     try {
-      const response = await fetch('https://api.openai.com/v1/models', {
-        headers: {
-          'Authorization': `Bearer ${key}`
-        }
-      });
-      return response.ok;
+      const groq = new Groq({ apiKey: key, dangerouslyAllowBrowser: true });
+      await groq.models.list();
+      return true;
     } catch {
       return false;
     }
   };
+
 
   const handleUnlockStoredKey = async () => {
     if (!passphrase.trim()) {
@@ -73,7 +72,7 @@ export const SecureApiKeyDialog: React.FC<SecureApiKeyDialogProps> = ({
 
   const handleSubmit = async () => {
     setError('');
-    
+
     // Validate API key
     const keyValidation = InputValidator.validateApiKey(apiKey);
     if (!keyValidation.isValid) {
@@ -87,12 +86,12 @@ export const SecureApiKeyDialog: React.FC<SecureApiKeyDialogProps> = ({
         setError('Please enter a passphrase for encryption');
         return;
       }
-      
+
       if (passphrase.length < 8) {
         setError('Passphrase must be at least 8 characters long');
         return;
       }
-      
+
       if (passphrase !== confirmPassphrase) {
         setError('Passphrases do not match');
         return;
@@ -102,11 +101,11 @@ export const SecureApiKeyDialog: React.FC<SecureApiKeyDialogProps> = ({
     setIsLoading(true);
 
     try {
-      // Validate API key with OpenAI
-      const isValidKey = await validateApiKeyWithOpenAI(apiKey.trim());
+      // Validate API key with Groq
+      const isValidKey = await validateApiKeyWithGroq(apiKey.trim());
       if (!isValidKey) {
         setError('API key is invalid or has insufficient permissions');
-        SecurityLogger.logEvent('api_key_validation_failed', { reason: 'openai_rejected' });
+        SecurityLogger.logEvent('api_key_validation_failed', { reason: 'groq_rejected' });
         setIsLoading(false);
         return;
       }
@@ -185,7 +184,7 @@ export const SecureApiKeyDialog: React.FC<SecureApiKeyDialogProps> = ({
           </div>
 
           <div className="flex gap-2">
-            <Button 
+            <Button
               onClick={handleUnlockStoredKey}
               className="flex-1"
               disabled={isLoading || !passphrase.trim()}
@@ -210,7 +209,7 @@ export const SecureApiKeyDialog: React.FC<SecureApiKeyDialogProps> = ({
       <div className="text-center mb-6">
         <Key className="w-12 h-12 text-primary mx-auto mb-4" />
         <h2 className="text-2xl font-bold text-foreground mb-2">Configure API Key</h2>
-        <p className="text-muted-foreground">Secure your OpenAI API key for recruitment assistance</p>
+        <p className="text-muted-foreground">Secure your Groq API key for recruitment assistance</p>
       </div>
 
       {error && (
@@ -224,7 +223,7 @@ export const SecureApiKeyDialog: React.FC<SecureApiKeyDialogProps> = ({
         <div className="relative">
           <Input
             type={showApiKey ? "text" : "password"}
-            placeholder="Enter your OpenAI API key (sk-...)"
+            placeholder="Enter your Groq API key (gsk_...)"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             className="pr-10"
@@ -283,7 +282,7 @@ export const SecureApiKeyDialog: React.FC<SecureApiKeyDialogProps> = ({
           </>
         )}
 
-        <Button 
+        <Button
           onClick={handleSubmit}
           className="w-full"
           disabled={isLoading || !apiKey.trim() || (useEncryption && (!passphrase.trim() || passphrase !== confirmPassphrase))}
@@ -294,7 +293,7 @@ export const SecureApiKeyDialog: React.FC<SecureApiKeyDialogProps> = ({
         <Alert>
           <Shield className="h-4 w-4" />
           <AlertDescription className="text-xs">
-            {useEncryption 
+            {useEncryption
               ? "Your API key will be encrypted with AES-256 and stored locally. The passphrase is never stored."
               : "Your API key will only be kept in memory for this session. It will not be saved."
             }
